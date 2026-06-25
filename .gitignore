@@ -1,35 +1,23 @@
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
+# Gradle
+.gradle/
+build/
+*/build/
 
-# testing
-/coverage
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.cxx/
 
-# next.js
-/.next/
-/out/
+# Local config
+local.properties
 
-# production
-/build
+# Keystores / secrets
+*.jks
+*.keystore
 
-# misc
+# OS
 .DS_Store
-*.pem
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files
-.env
-.env*.local
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Logs
+*.log
