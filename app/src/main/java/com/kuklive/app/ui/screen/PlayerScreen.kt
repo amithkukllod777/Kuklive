@@ -38,12 +38,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.kuklive.app.ui.MainViewModel
 
@@ -65,24 +70,50 @@ fun PlayerScreen(
 
     var index by remember { mutableIntStateOf(viewModel.playingIndex.coerceIn(0, channels.lastIndex)) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isBuffering by remember { mutableStateOf(true) }
 
     val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            playWhenReady = true
-            addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    errorMessage = "Can't play this stream (${error.errorCodeName})"
-                }
-            })
-        }
+        // Most IPTV streams redirect between http/https and require a
+        // browser-like User-Agent — ExoPlayer blocks both by default.
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Kuklive/1.0")
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(30_000)
+            .setReadTimeoutMs(30_000)
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .build().apply {
+                playWhenReady = true
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        isBuffering = state == Player.STATE_BUFFERING
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        isBuffering = false
+                        errorMessage = "Can't play this stream (${error.errorCodeName})"
+                    }
+                })
+            }
     }
 
     // (Re)load whenever the selected channel changes.
     LaunchedEffect(index) {
         errorMessage = null
+        isBuffering = true
         val channel = channels[index]
         viewModel.updatePlayingIndex(index)
-        exoPlayer.setMediaItem(MediaItem.fromUri(channel.url))
+        val mediaItem = MediaItem.Builder()
+            .setUri(channel.url)
+            .apply {
+                if (channel.url.contains(".m3u8", ignoreCase = true)) {
+                    setMimeType(MimeTypes.APPLICATION_M3U8)
+                }
+            }
+            .build()
+        exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
         exoPlayer.play()
     }
@@ -112,6 +143,12 @@ fun PlayerScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
+
+        if (isBuffering && errorMessage == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Color.White)
+            }
+        }
 
         if (errorMessage != null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
