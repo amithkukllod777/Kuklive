@@ -3,6 +3,7 @@ package com.kuklive.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kuklive.app.data.CategoryTaxonomy
 import com.kuklive.app.data.PlaylistRepository
 import com.kuklive.app.data.SettingsStore
 import com.kuklive.app.data.model.Channel
@@ -28,8 +29,12 @@ data class UiState(
     val selectedCategory: String? = null,
     val tab: Tab = Tab.CHANNELS,
 ) {
+    /** Curated genres present in the loaded channels, in industry-standard order. */
     val categories: List<String>
-        get() = channels.flatMap { it.categories }.distinct().sorted()
+        get() = channels.flatMap { it.categories }
+            .mapNotNull { CategoryTaxonomy.genreFor(it) }
+            .distinct()
+            .sortedWith(compareBy({ CategoryTaxonomy.orderIndex(it) }, { it }))
 
     val visibleChannels: List<Channel>
         get() {
@@ -39,7 +44,7 @@ data class UiState(
                 channels
             }
             return base
-                .filter { selectedCategory == null || selectedCategory in it.categories }
+                .filter { selectedCategory == null || it.categories.any { c -> CategoryTaxonomy.genreFor(c) == selectedCategory } }
                 .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
         }
 
