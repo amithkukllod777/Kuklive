@@ -110,8 +110,8 @@ fun ChannelsScreen(
             }
 
             RegionBar(
-                country = state.countryCode,
-                language = state.languageCode,
+                countries = state.countryCodes,
+                languages = state.languageCodes,
                 onClick = onOpenSettings,
             )
 
@@ -152,11 +152,8 @@ fun ChannelsScreen(
 }
 
 @Composable
-private fun RegionBar(country: String, language: String, onClick: () -> Unit) {
-    val label = buildString {
-        append(Catalog.countryLabel(country) ?: country.uppercase())
-        Catalog.languageName(language)?.let { append("   ·   "); append(it) }
-    }
+private fun RegionBar(countries: Set<String>, languages: Set<String>, onClick: () -> Unit) {
+    val label = "${Catalog.countrySummary(countries)}   ·   ${Catalog.languageSummary(languages)}"
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier

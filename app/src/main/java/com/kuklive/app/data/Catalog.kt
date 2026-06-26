@@ -95,13 +95,26 @@ object Catalog {
     fun countryName(code: String?): String? =
         code?.let { c -> countries.firstOrNull { it.code.equals(c, true) }?.name ?: CountryUtil.name(c) }
 
-    fun countryLabel(code: String?): String? {
-        if (code.isNullOrBlank()) return null
-        val flag = CountryUtil.flag(code) ?: ""
-        val name = countryName(code) ?: code.uppercase()
-        return if (flag.isEmpty()) name else "$flag  $name"
-    }
-
     fun languageName(code: String?): String? =
         if (code.isNullOrBlank()) null else languages.firstOrNull { it.code == code }?.name ?: code
+
+    /** "All countries" / "India, Pakistan +2" for the region bar. */
+    fun countrySummary(codes: Set<String>): String {
+        if (codes.isEmpty()) return "All countries"
+        val names = codes.map { c -> countryName(c) ?: c.uppercase() }.sorted()
+        return summarize(names)
+    }
+
+    /** "Any language" / "Hindi, Tamil +1" for the region bar. */
+    fun languageSummary(codes: Set<String>): String {
+        if (codes.isEmpty()) return "Any language"
+        val names = codes.mapNotNull { languageName(it) }.sorted()
+        return summarize(names)
+    }
+
+    private fun summarize(names: List<String>): String = when {
+        names.isEmpty() -> ""
+        names.size <= 2 -> names.joinToString(", ")
+        else -> "${names.take(2).joinToString(", ")} +${names.size - 2}"
+    }
 }

@@ -39,8 +39,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var country by remember(state.countryCode) { mutableStateOf(state.countryCode) }
-    var language by remember(state.languageCode) { mutableStateOf(state.languageCode) }
+    var countries by remember(state.countryCodes) { mutableStateOf(state.countryCodes) }
+    var languages by remember(state.languageCodes) { mutableStateOf(state.languageCodes) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -73,15 +73,23 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
             )
 
-            CountryDropdown(selected = country, onSelected = { country = it })
+            MultiCountryPicker(
+                selected = countries,
+                onToggle = { code -> countries = countries.toggle(code) },
+                onClear = { countries = emptySet() },
+            )
             Spacer(Modifier.height(4.dp))
-            LanguageDropdown(selected = language, onSelected = { language = it })
+            MultiLanguagePicker(
+                selected = languages,
+                onToggle = { code -> languages = languages.toggle(code) },
+                onClear = { languages = emptySet() },
+            )
 
             Spacer(Modifier.height(8.dp))
 
             Button(
                 onClick = {
-                    viewModel.applySetup(country, language)
+                    viewModel.applySetup(countries, languages)
                     onBack()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Brand),

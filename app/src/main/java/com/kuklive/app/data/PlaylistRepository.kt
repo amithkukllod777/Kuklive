@@ -2,6 +2,9 @@ package com.kuklive.app.data
 
 import com.kuklive.app.data.model.Channel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -9,41 +12,59 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Loads channels from iptv-org's small per-country / per-language playlists so
- * only the subset the user picked is downloaded — far faster than the full
- * ~10k-channel index.
+ * only the subset the user picked is downloaded.
+ *
+ * Selection semantics (each set may hold multiple values):
+ *  - countries + languages → channels in any chosen country AND any chosen language
+ *  - countries only        → channels in any chosen country
+ *  - languages only        → channels in any chosen language (across all countries)
+ *  - neither               → the full index (everything)
  */
 class PlaylistRepository(
     private val client: OkHttpClient = defaultClient(),
 ) {
 
-    suspend fun loadChannels(countryCode: String?, languageCode: String?): Result<List<Channel>> =
+    suspend fun loadChannels(countries: Set<String>, languages: Set<String>): Result<List<Channel>> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val hasCountry = !countryCode.isNullOrBlank()
-                val hasLanguage = !languageCode.isNullOrBlank()
-
-                // Base list: prefer the (usually smaller) country playlist.
-                val baseUrl = when {
-                    hasCountry -> countryUrl(countryCode!!)
-                    hasLanguage -> languageUrl(languageCode!!)
-                    else -> FULL_INDEX
-                }
-                var channels = M3UParser.parse(fetch(baseUrl))
-
-                // When both are chosen, keep only channels also in the language list.
-                if (hasCountry && hasLanguage) {
-                    val langUrls = runCatching {
-                        M3UParser.parse(fetch(languageUrl(languageCode!!))).map { it.url }.toHashSet()
-                    }.getOrNull()
-                    if (!langUrls.isNullOrEmpty()) {
-                        channels = channels.filter { it.url in langUrls }
+                coroutineScope {
+                    val base = when {
+                        countries.isNotEmpty() -> fetchMerged(countries.map { countryUrl(it) })
+                        languages.isNotEmpty() -> fetchMerged(languages.map { languageUrl(it) })
+                        else -> M3UParser.parse(fetch(FULL_INDEX))
                     }
-                }
 
-                if (channels.isEmpty()) error("No channels found for this selection")
-                channels
+                    val result = if (countries.isNotEmpty() && languages.isNotEmpty()) {
+                        val langUrls = fetchUrlSet(languages.map { languageUrl(it) })
+                        if (langUrls.isEmpty()) base else base.filter { it.url in langUrls }
+                    } else {
+                        base
+                    }
+
+                    if (result.isEmpty()) error("No channels found for this selection")
+                    result
+                }
             }
         }
+
+    /** Fetches several playlists in parallel and merges them, de-duplicating by URL. */
+    private suspend fun fetchMerged(urls: List<String>): List<Channel> = coroutineScope {
+        val lists = urls.map { url ->
+            async { runCatching { M3UParser.parse(fetch(url)) }.getOrDefault(emptyList()) }
+        }.awaitAll()
+        val seen = HashSet<String>()
+        val merged = ArrayList<Channel>()
+        for (list in lists) for (channel in list) if (seen.add(channel.url)) merged.add(channel)
+        merged
+    }
+
+    /** Fetches several playlists in parallel and returns the union of their stream URLs. */
+    private suspend fun fetchUrlSet(urls: List<String>): HashSet<String> = coroutineScope {
+        val lists = urls.map { url ->
+            async { runCatching { M3UParser.parse(fetch(url)).map { it.url } }.getOrDefault(emptyList()) }
+        }.awaitAll()
+        HashSet<String>().apply { lists.forEach { addAll(it) } }
+    }
 
     private fun fetch(url: String): String {
         val request = Request.Builder()

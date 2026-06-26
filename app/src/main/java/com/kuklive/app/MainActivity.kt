@@ -66,9 +66,9 @@ private fun KukliveApp() {
         }
         state.setupNeeded -> {
             SetupScreen(
-                initialCountry = state.countryCode,
-                initialLanguage = state.languageCode,
-                onContinue = { country, language -> viewModel.applySetup(country, language) },
+                initialCountries = state.countryCodes.ifEmpty { setOf(com.kuklive.app.data.SettingsStore.DEFAULT_COUNTRY) },
+                initialLanguages = state.languageCodes,
+                onContinue = { countries, languages -> viewModel.applySetup(countries, languages) },
             )
             return
         }

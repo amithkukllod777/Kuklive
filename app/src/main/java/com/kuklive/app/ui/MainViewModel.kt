@@ -18,8 +18,8 @@ enum class Tab { CHANNELS, FAVORITES }
 data class UiState(
     val settingsLoaded: Boolean = false,
     val setupNeeded: Boolean = false,
-    val countryCode: String = SettingsStore.DEFAULT_COUNTRY,
-    val languageCode: String = "",
+    val countryCodes: Set<String> = emptySet(),
+    val languageCodes: Set<String> = emptySet(),
     val isLoading: Boolean = true,
     val error: String? = null,
     val channels: List<Channel> = emptyList(),
@@ -60,8 +60,8 @@ class MainViewModel(
         private set
 
     private data class Persisted(
-        val country: String,
-        val language: String,
+        val countries: Set<String>,
+        val languages: Set<String>,
         val setupDone: Boolean,
         val favorites: Set<String>,
     )
@@ -69,20 +69,20 @@ class MainViewModel(
     init {
         viewModelScope.launch {
             combine(
-                settings.countryCode,
-                settings.languageCode,
+                settings.countryCodes,
+                settings.languageCodes,
                 settings.setupDone,
                 settings.favoriteUrls,
-            ) { country, language, setupDone, favs ->
-                Persisted(country, language, setupDone, favs)
+            ) { countries, languages, setupDone, favs ->
+                Persisted(countries, languages, setupDone, favs)
             }.collect { p ->
                 val firstEmission = !_state.value.settingsLoaded
                 _state.update {
                     it.copy(
                         settingsLoaded = true,
                         setupNeeded = !p.setupDone,
-                        countryCode = p.country,
-                        languageCode = p.language,
+                        countryCodes = p.countries,
+                        languageCodes = p.languages,
                         favoriteUrls = p.favorites,
                     )
                 }
@@ -92,21 +92,21 @@ class MainViewModel(
     }
 
     /** Saves the country/language choice and loads the matching channels. */
-    fun applySetup(country: String, language: String) {
+    fun applySetup(countries: Set<String>, languages: Set<String>) {
         viewModelScope.launch {
-            settings.saveSetup(country, language)
+            settings.saveSetup(countries, languages)
             _state.update { it.copy(setupNeeded = false, selectedCategory = null) }
-            reload(country, language)
+            reload(countries, languages)
         }
     }
 
     fun reload(
-        country: String = _state.value.countryCode,
-        language: String = _state.value.languageCode,
+        countries: Set<String> = _state.value.countryCodes,
+        languages: Set<String> = _state.value.languageCodes,
     ) {
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            repository.loadChannels(country, language)
+            repository.loadChannels(countries, languages)
                 .onSuccess { list ->
                     _state.update { it.copy(isLoading = false, channels = list, error = null) }
                 }

@@ -32,12 +32,12 @@ import com.kuklive.app.ui.theme.Brand
 
 @Composable
 fun SetupScreen(
-    initialCountry: String = SettingsStore.DEFAULT_COUNTRY,
-    initialLanguage: String = "",
-    onContinue: (country: String, language: String) -> Unit,
+    initialCountries: Set<String> = setOf(SettingsStore.DEFAULT_COUNTRY),
+    initialLanguages: Set<String> = emptySet(),
+    onContinue: (countries: Set<String>, languages: Set<String>) -> Unit,
 ) {
-    var country by remember { mutableStateOf(initialCountry) }
-    var language by remember { mutableStateOf(initialLanguage) }
+    var countries by remember { mutableStateOf(initialCountries) }
+    var languages by remember { mutableStateOf(initialLanguages) }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
@@ -54,7 +54,7 @@ fun SetupScreen(
             Text("Welcome to Kuklive", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Pick your country and language — we'll load only those channels so it stays fast.",
+                "Pick countries and languages — choose as many as you like, or leave them open for all. We load only what you pick so it stays fast.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center,
@@ -66,15 +66,23 @@ fun SetupScreen(
                 modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                CountryDropdown(selected = country, onSelected = { country = it })
+                MultiCountryPicker(
+                    selected = countries,
+                    onToggle = { code -> countries = countries.toggle(code) },
+                    onClear = { countries = emptySet() },
+                )
                 Spacer(Modifier.height(8.dp))
-                LanguageDropdown(selected = language, onSelected = { language = it })
+                MultiLanguagePicker(
+                    selected = languages,
+                    onToggle = { code -> languages = languages.toggle(code) },
+                    onClear = { languages = emptySet() },
+                )
             }
 
             Spacer(Modifier.height(28.dp))
 
             Button(
-                onClick = { onContinue(country, language) },
+                onClick = { onContinue(countries, languages) },
                 colors = ButtonDefaults.buttonColors(containerColor = Brand),
                 modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp).height(52.dp),
             ) {
@@ -83,3 +91,6 @@ fun SetupScreen(
         }
     }
 }
+
+internal fun Set<String>.toggle(value: String): Set<String> =
+    if (value in this) this - value else this + value
