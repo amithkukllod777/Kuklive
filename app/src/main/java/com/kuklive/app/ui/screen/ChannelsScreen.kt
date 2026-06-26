@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -23,7 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LiveTv
@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.kuklive.app.data.Catalog
 import com.kuklive.app.data.model.Channel
 import com.kuklive.app.ui.MainViewModel
 import com.kuklive.app.ui.Tab as UiTab
@@ -108,6 +109,12 @@ fun ChannelsScreen(
                 )
             }
 
+            RegionBar(
+                country = state.countryCode,
+                language = state.languageCode,
+                onClick = onOpenSettings,
+            )
+
             OutlinedTextField(
                 value = state.query,
                 onValueChange = viewModel::onQueryChange,
@@ -119,17 +126,13 @@ fun ChannelsScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
 
-            FilterBar(
-                categories = state.categories,
-                countries = state.countries,
-                languages = state.languages,
-                selectedCategory = state.selectedCategory,
-                selectedCountry = state.selectedCountry,
-                selectedLanguage = state.selectedLanguage,
-                onCategory = viewModel::onCategorySelected,
-                onCountry = viewModel::onCountrySelected,
-                onLanguage = viewModel::onLanguageSelected,
-            )
+            if (state.categories.isNotEmpty()) {
+                CategoryRow(
+                    categories = state.categories,
+                    selected = state.selectedCategory,
+                    onSelected = viewModel::onCategorySelected,
+                )
+            }
 
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 when {
@@ -149,87 +152,57 @@ fun ChannelsScreen(
 }
 
 @Composable
-private fun FilterBar(
+private fun RegionBar(country: String, language: String, onClick: () -> Unit) {
+    val label = buildString {
+        append(Catalog.countryLabel(country) ?: country.uppercase())
+        Catalog.languageName(language)?.let { append("   ·   "); append(it) }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = Brand)
+        Spacer(Modifier.width(4.dp))
+        Icon(Icons.Default.ArrowDropDown, contentDescription = "Change region", tint = Brand)
+    }
+}
+
+@Composable
+private fun CategoryRow(
     categories: List<String>,
-    countries: List<String>,
-    languages: List<String>,
-    selectedCategory: String?,
-    selectedCountry: String?,
-    selectedLanguage: String?,
-    onCategory: (String?) -> Unit,
-    onCountry: (String?) -> Unit,
-    onLanguage: (String?) -> Unit,
+    selected: String?,
+    onSelected: (String?) -> Unit,
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item {
-            FilterDropdown("Category", categories, selectedCategory, onCategory)
-        }
-        if (countries.isNotEmpty()) {
-            item { FilterDropdown("Country", countries, selectedCountry, onCountry) }
-        }
-        if (languages.isNotEmpty()) {
-            item { FilterDropdown("Language", languages, selectedLanguage, onLanguage) }
+        item { CategoryChip("All", selected == null) { onSelected(null) } }
+        items(categories) { category ->
+            CategoryChip(category, category == selected) { onSelected(category) }
         }
     }
 }
 
 @Composable
-private fun FilterDropdown(
-    label: String,
-    options: List<String>,
-    selected: String?,
-    onSelected: (String?) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val active = selected != null
-
-    Box {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(if (active) Brand else MaterialTheme.colorScheme.surface)
-                .clickable { expanded = true }
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-        ) {
-            Text(
-                text = selected ?: label,
-                color = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Icon(
-                Icons.Default.ArrowDropDown,
-                contentDescription = null,
-                tint = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
-            )
-        }
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.heightIn(max = 420.dp),
-        ) {
-            DropdownMenuItem(
-                text = { Text("All $label") },
-                onClick = { onSelected(null); expanded = false },
-                trailingIcon = {
-                    if (selected == null) Icon(Icons.Default.Check, contentDescription = null, tint = Brand)
-                },
-            )
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option) },
-                    onClick = { onSelected(option); expanded = false },
-                    trailingIcon = {
-                        if (option == selected) Icon(Icons.Default.Check, contentDescription = null, tint = Brand)
-                    },
-                )
-            }
-        }
+private fun CategoryChip(label: String, active: Boolean, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (active) Brand else MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = label,
+            color = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

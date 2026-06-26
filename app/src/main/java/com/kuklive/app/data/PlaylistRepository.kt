@@ -8,32 +8,42 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 /**
- * Fetches and parses an M3U playlist. For iptv-org playlists it additionally
- * pulls the sibling `index.language.m3u` to enrich channels with language
- * metadata (the base playlist carries no language attribute).
+ * Loads channels from iptv-org's small per-country / per-language playlists so
+ * only the subset the user picked is downloaded — far faster than the full
+ * ~10k-channel index.
  */
 class PlaylistRepository(
     private val client: OkHttpClient = defaultClient(),
 ) {
 
-    /** Fetches and parses the main playlist. Returns quickly so channels show fast. */
-    suspend fun loadChannels(playlistUrl: String): Result<List<Channel>> = withContext(Dispatchers.IO) {
-        runCatching {
-            val channels = M3UParser.parse(fetch(playlistUrl))
-            if (channels.isEmpty()) error("No channels found")
-            channels
-        }
-    }
+    suspend fun loadChannels(countryCode: String?, languageCode: String?): Result<List<Channel>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val hasCountry = !countryCode.isNullOrBlank()
+                val hasLanguage = !languageCode.isNullOrBlank()
 
-    /**
-     * Best-effort language enrichment: downloads the (large) iptv-org language
-     * index separately so it never blocks the initial channel list. Returns a
-     * map of stream URL -> languages, or null when unavailable.
-     */
-    suspend fun loadLanguageMap(playlistUrl: String): Map<String, List<String>>? = withContext(Dispatchers.IO) {
-        val langUrl = languageIndexUrl(playlistUrl) ?: return@withContext null
-        runCatching { M3UParser.parseGroupTitlesByUrl(fetch(langUrl)) }.getOrNull()
-    }
+                // Base list: prefer the (usually smaller) country playlist.
+                val baseUrl = when {
+                    hasCountry -> countryUrl(countryCode!!)
+                    hasLanguage -> languageUrl(languageCode!!)
+                    else -> FULL_INDEX
+                }
+                var channels = M3UParser.parse(fetch(baseUrl))
+
+                // When both are chosen, keep only channels also in the language list.
+                if (hasCountry && hasLanguage) {
+                    val langUrls = runCatching {
+                        M3UParser.parse(fetch(languageUrl(languageCode!!))).map { it.url }.toHashSet()
+                    }.getOrNull()
+                    if (!langUrls.isNullOrEmpty()) {
+                        channels = channels.filter { it.url in langUrls }
+                    }
+                }
+
+                if (channels.isEmpty()) error("No channels found for this selection")
+                channels
+            }
+        }
 
     private fun fetch(url: String): String {
         val request = Request.Builder()
@@ -48,17 +58,18 @@ class PlaylistRepository(
         }
     }
 
-    /** Derives the iptv-org language index URL that sits beside an index playlist. */
-    private fun languageIndexUrl(playlistUrl: String): String? {
-        if (!playlistUrl.contains("iptv-org.github.io/iptv")) return null
-        if (playlistUrl.contains("index.language.m3u")) return null
-        return playlistUrl.substringBeforeLast('/') + "/index.language.m3u"
-    }
+    private fun countryUrl(code: String) =
+        "https://iptv-org.github.io/iptv/countries/${code.trim().lowercase()}.m3u"
+
+    private fun languageUrl(code: String) =
+        "https://iptv-org.github.io/iptv/languages/${code.trim().lowercase()}.m3u"
 
     companion object {
+        private const val FULL_INDEX = "https://iptv-org.github.io/iptv/index.m3u"
+
         private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
             .build()
     }
 }

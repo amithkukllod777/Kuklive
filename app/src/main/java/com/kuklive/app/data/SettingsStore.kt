@@ -3,6 +3,7 @@ package com.kuklive.app.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -13,23 +14,27 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "kuklive_settings")
 
 /**
- * Persists the active playlist URL and the set of favorite channel URLs.
+ * Persists the user's country / language selection (used to load just the
+ * channels they want) and their favorite channel URLs.
  */
 class SettingsStore(private val context: Context) {
 
-    private val playlistKey = stringPreferencesKey("playlist_url")
+    private val countryKey = stringPreferencesKey("country_code")
+    private val languageKey = stringPreferencesKey("language_code")
+    private val setupDoneKey = booleanPreferencesKey("setup_done")
     private val favoritesKey = stringSetPreferencesKey("favorite_urls")
 
-    val playlistUrl: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[playlistKey] ?: DEFAULT_PLAYLIST_URL
-    }
+    val countryCode: Flow<String> = context.dataStore.data.map { it[countryKey] ?: DEFAULT_COUNTRY }
+    val languageCode: Flow<String> = context.dataStore.data.map { it[languageKey] ?: "" }
+    val setupDone: Flow<Boolean> = context.dataStore.data.map { it[setupDoneKey] ?: false }
+    val favoriteUrls: Flow<Set<String>> = context.dataStore.data.map { it[favoritesKey] ?: emptySet() }
 
-    val favoriteUrls: Flow<Set<String>> = context.dataStore.data.map { prefs ->
-        prefs[favoritesKey] ?: emptySet()
-    }
-
-    suspend fun setPlaylistUrl(url: String) {
-        context.dataStore.edit { it[playlistKey] = url.trim() }
+    suspend fun saveSetup(country: String, language: String) {
+        context.dataStore.edit { prefs ->
+            prefs[countryKey] = country.trim()
+            prefs[languageKey] = language.trim()
+            prefs[setupDoneKey] = true
+        }
     }
 
     suspend fun toggleFavorite(url: String) {
@@ -40,10 +45,6 @@ class SettingsStore(private val context: Context) {
     }
 
     companion object {
-        /**
-         * iptv-org's community-maintained index of publicly available streams.
-         * Users can replace this with their own provider's M3U URL in Settings.
-         */
-        const val DEFAULT_PLAYLIST_URL = "https://iptv-org.github.io/iptv/index.m3u"
+        const val DEFAULT_COUNTRY = "in"
     }
 }

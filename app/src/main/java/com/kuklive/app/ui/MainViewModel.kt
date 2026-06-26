@@ -16,27 +16,21 @@ import kotlinx.coroutines.launch
 enum class Tab { CHANNELS, FAVORITES }
 
 data class UiState(
+    val settingsLoaded: Boolean = false,
+    val setupNeeded: Boolean = false,
+    val countryCode: String = SettingsStore.DEFAULT_COUNTRY,
+    val languageCode: String = "",
     val isLoading: Boolean = true,
     val error: String? = null,
     val channels: List<Channel> = emptyList(),
     val favoriteUrls: Set<String> = emptySet(),
     val query: String = "",
     val selectedCategory: String? = null,
-    val selectedCountry: String? = null,
-    val selectedLanguage: String? = null,
     val tab: Tab = Tab.CHANNELS,
-    val playlistUrl: String = "",
 ) {
     val categories: List<String>
         get() = channels.flatMap { it.categories }.distinct().sorted()
 
-    val countries: List<String>
-        get() = channels.mapNotNull { it.country }.distinct().sorted()
-
-    val languages: List<String>
-        get() = channels.flatMap { it.languages }.distinct().sorted()
-
-    /** Channels after applying tab (favorites), category/country/language and search filters. */
     val visibleChannels: List<Channel>
         get() {
             val base = if (tab == Tab.FAVORITES) {
@@ -46,8 +40,6 @@ data class UiState(
             }
             return base
                 .filter { selectedCategory == null || selectedCategory in it.categories }
-                .filter { selectedCountry == null || it.country == selectedCountry }
-                .filter { selectedLanguage == null || selectedLanguage in it.languages }
                 .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
         }
 
@@ -62,32 +54,61 @@ class MainViewModel(
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
-    /** The list and position handed to the player so it can zap up/down. */
     var playingChannels: List<Channel> = emptyList()
         private set
     var playingIndex: Int = 0
         private set
 
+    private data class Persisted(
+        val country: String,
+        val language: String,
+        val setupDone: Boolean,
+        val favorites: Set<String>,
+    )
+
     init {
-        // Keep favorites + playlist URL in sync with persisted settings.
         viewModelScope.launch {
-            combine(settings.playlistUrl, settings.favoriteUrls) { url, favs -> url to favs }
-                .collect { (url, favs) ->
-                    val firstLoad = _state.value.playlistUrl.isEmpty()
-                    _state.update { it.copy(playlistUrl = url, favoriteUrls = favs) }
-                    if (firstLoad) reload()
+            combine(
+                settings.countryCode,
+                settings.languageCode,
+                settings.setupDone,
+                settings.favoriteUrls,
+            ) { country, language, setupDone, favs ->
+                Persisted(country, language, setupDone, favs)
+            }.collect { p ->
+                val firstEmission = !_state.value.settingsLoaded
+                _state.update {
+                    it.copy(
+                        settingsLoaded = true,
+                        setupNeeded = !p.setupDone,
+                        countryCode = p.country,
+                        languageCode = p.language,
+                        favoriteUrls = p.favorites,
+                    )
                 }
+                if (firstEmission && p.setupDone) reload()
+            }
         }
     }
 
-    fun reload() {
-        val url = _state.value.playlistUrl.ifBlank { SettingsStore.DEFAULT_PLAYLIST_URL }
+    /** Saves the country/language choice and loads the matching channels. */
+    fun applySetup(country: String, language: String) {
+        viewModelScope.launch {
+            settings.saveSetup(country, language)
+            _state.update { it.copy(setupNeeded = false, selectedCategory = null) }
+            reload(country, language)
+        }
+    }
+
+    fun reload(
+        country: String = _state.value.countryCode,
+        language: String = _state.value.languageCode,
+    ) {
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            repository.loadChannels(url)
+            repository.loadChannels(country, language)
                 .onSuccess { list ->
                     _state.update { it.copy(isLoading = false, channels = list, error = null) }
-                    enrichLanguages(url)
                 }
                 .onFailure { e ->
                     _state.update { it.copy(isLoading = false, error = e.message ?: "Failed to load") }
@@ -95,48 +116,16 @@ class MainViewModel(
         }
     }
 
-    /** Fills in language metadata after channels are already shown. */
-    private fun enrichLanguages(url: String) {
-        viewModelScope.launch {
-            val map = repository.loadLanguageMap(url) ?: return@launch
-            if (map.isEmpty()) return@launch
-            _state.update { st ->
-                st.copy(channels = st.channels.map { ch ->
-                    val langs = map[ch.url]
-                    if (langs.isNullOrEmpty()) ch else ch.copy(languages = langs)
-                })
-            }
-        }
-    }
-
     fun onQueryChange(q: String) = _state.update { it.copy(query = q) }
 
     fun onCategorySelected(category: String?) = _state.update { it.copy(selectedCategory = category) }
 
-    fun onCountrySelected(country: String?) = _state.update { it.copy(selectedCountry = country) }
-
-    fun onLanguageSelected(language: String?) = _state.update { it.copy(selectedLanguage = language) }
-
-    fun clearFilters() = _state.update {
-        it.copy(selectedCategory = null, selectedCountry = null, selectedLanguage = null)
-    }
-
-    fun onTabSelected(tab: Tab) = _state.update {
-        it.copy(tab = tab, selectedCategory = null, selectedCountry = null, selectedLanguage = null)
-    }
+    fun onTabSelected(tab: Tab) = _state.update { it.copy(tab = tab, selectedCategory = null) }
 
     fun toggleFavorite(channel: Channel) {
         viewModelScope.launch { settings.toggleFavorite(channel.url) }
     }
 
-    fun setPlaylistUrl(url: String) {
-        viewModelScope.launch {
-            settings.setPlaylistUrl(url)
-            reload()
-        }
-    }
-
-    /** Called when the user opens a channel; remembers the surrounding list for zapping. */
     fun selectForPlayback(channel: Channel) {
         val list = _state.value.visibleChannels
         playingChannels = list
