@@ -40,19 +40,20 @@ class PlaylistRepository(
                 coroutineScope {
                     val merged = when {
                         countries.isNotEmpty() -> {
-                            // Curated Free-TV channels first, then iptv-org for breadth.
+                            // Bundled verified channels first, then Free-TV, then iptv-org.
+                            val curated = countries.flatMap { CuratedPlaylists.forCountry(it) }
                             val freeTv = async { freeTvForCountries(countries) }
                             val iptvOrg = async { fetchMerged(countries.map { countryUrl(it) }) }
                             var iptvChannels = iptvOrg.await()
-                            // Language filter narrows only iptv-org (Free-TV has no
-                            // language metadata, so its working channels always stay).
+                            // Language filter narrows only iptv-org (curated/Free-TV have no
+                            // language metadata, so their working channels always stay).
                             if (languages.isNotEmpty()) {
                                 val langUrls = fetchUrlSet(languages.map { languageUrl(it) })
                                 if (langUrls.isNotEmpty()) {
                                     iptvChannels = iptvChannels.filter { it.url in langUrls }
                                 }
                             }
-                            dedupe(freeTv.await() + iptvChannels)
+                            dedupe(curated + freeTv.await() + iptvChannels)
                         }
                         languages.isNotEmpty() -> fetchMerged(languages.map { languageUrl(it) })
                         else -> dedupe(M3UParser.parse(fetch(FREE_TV_MAIN)))
