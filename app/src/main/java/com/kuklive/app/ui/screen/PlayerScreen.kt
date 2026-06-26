@@ -1,6 +1,10 @@
 package com.kuklive.app.ui.screen
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -83,8 +87,15 @@ fun PlayerScreen(
         exoPlayer.play()
     }
 
+    // Keep the screen awake the whole time a channel is open, then release
+    // the player and clear the flag when leaving the player screen.
     DisposableEffect(Unit) {
-        onDispose { exoPlayer.release() }
+        val window = context.findActivity()?.window
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            exoPlayer.release()
+        }
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -170,4 +181,14 @@ fun PlayerScreen(
             }
         }
     }
+}
+
+/** Walks the ContextWrapper chain to find the hosting Activity. */
+private fun Context.findActivity(): Activity? {
+    var ctx: Context? = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }

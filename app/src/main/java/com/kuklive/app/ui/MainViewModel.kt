@@ -22,13 +22,21 @@ data class UiState(
     val favoriteUrls: Set<String> = emptySet(),
     val query: String = "",
     val selectedCategory: String? = null,
+    val selectedCountry: String? = null,
+    val selectedLanguage: String? = null,
     val tab: Tab = Tab.CHANNELS,
     val playlistUrl: String = "",
 ) {
     val categories: List<String>
-        get() = channels.map { it.groupOrDefault }.distinct().sorted()
+        get() = channels.flatMap { it.categories }.distinct().sorted()
 
-    /** Channels after applying tab (favorites), category and search filters. */
+    val countries: List<String>
+        get() = channels.mapNotNull { it.country }.distinct().sorted()
+
+    val languages: List<String>
+        get() = channels.flatMap { it.languages }.distinct().sorted()
+
+    /** Channels after applying tab (favorites), category/country/language and search filters. */
     val visibleChannels: List<Channel>
         get() {
             val base = if (tab == Tab.FAVORITES) {
@@ -37,7 +45,9 @@ data class UiState(
                 channels
             }
             return base
-                .filter { selectedCategory == null || it.groupOrDefault == selectedCategory }
+                .filter { selectedCategory == null || selectedCategory in it.categories }
+                .filter { selectedCountry == null || it.country == selectedCountry }
+                .filter { selectedLanguage == null || selectedLanguage in it.languages }
                 .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
         }
 
@@ -88,7 +98,17 @@ class MainViewModel(
 
     fun onCategorySelected(category: String?) = _state.update { it.copy(selectedCategory = category) }
 
-    fun onTabSelected(tab: Tab) = _state.update { it.copy(tab = tab, selectedCategory = null) }
+    fun onCountrySelected(country: String?) = _state.update { it.copy(selectedCountry = country) }
+
+    fun onLanguageSelected(language: String?) = _state.update { it.copy(selectedLanguage = language) }
+
+    fun clearFilters() = _state.update {
+        it.copy(selectedCategory = null, selectedCountry = null, selectedLanguage = null)
+    }
+
+    fun onTabSelected(tab: Tab) = _state.update {
+        it.copy(tab = tab, selectedCategory = null, selectedCountry = null, selectedLanguage = null)
+    }
 
     fun toggleFavorite(channel: Channel) {
         viewModelScope.launch { settings.toggleFavorite(channel.url) }

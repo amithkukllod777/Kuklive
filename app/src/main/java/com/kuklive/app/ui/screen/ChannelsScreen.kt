@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,19 +19,20 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +45,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -114,27 +119,17 @@ fun ChannelsScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
 
-            if (state.categories.isNotEmpty()) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item {
-                        CategoryChip(
-                            label = "All",
-                            selected = state.selectedCategory == null,
-                            onClick = { viewModel.onCategorySelected(null) },
-                        )
-                    }
-                    items(state.categories) { category ->
-                        CategoryChip(
-                            label = category,
-                            selected = state.selectedCategory == category,
-                            onClick = { viewModel.onCategorySelected(category) },
-                        )
-                    }
-                }
-            }
+            FilterBar(
+                categories = state.categories,
+                countries = state.countries,
+                languages = state.languages,
+                selectedCategory = state.selectedCategory,
+                selectedCountry = state.selectedCountry,
+                selectedLanguage = state.selectedLanguage,
+                onCategory = viewModel::onCategorySelected,
+                onCountry = viewModel::onCountrySelected,
+                onLanguage = viewModel::onLanguageSelected,
+            )
 
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 when {
@@ -153,18 +148,89 @@ fun ChannelsScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = Brand,
-            selectedLabelColor = Color.White,
-        ),
-    )
+private fun FilterBar(
+    categories: List<String>,
+    countries: List<String>,
+    languages: List<String>,
+    selectedCategory: String?,
+    selectedCountry: String?,
+    selectedLanguage: String?,
+    onCategory: (String?) -> Unit,
+    onCountry: (String?) -> Unit,
+    onLanguage: (String?) -> Unit,
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            FilterDropdown("Category", categories, selectedCategory, onCategory)
+        }
+        if (countries.isNotEmpty()) {
+            item { FilterDropdown("Country", countries, selectedCountry, onCountry) }
+        }
+        if (languages.isNotEmpty()) {
+            item { FilterDropdown("Language", languages, selectedLanguage, onLanguage) }
+        }
+    }
+}
+
+@Composable
+private fun FilterDropdown(
+    label: String,
+    options: List<String>,
+    selected: String?,
+    onSelected: (String?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val active = selected != null
+
+    Box {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(if (active) Brand else MaterialTheme.colorScheme.surface)
+                .clickable { expanded = true }
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            Text(
+                text = selected ?: label,
+                color = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Icon(
+                Icons.Default.ArrowDropDown,
+                contentDescription = null,
+                tint = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.heightIn(max = 420.dp),
+        ) {
+            DropdownMenuItem(
+                text = { Text("All $label") },
+                onClick = { onSelected(null); expanded = false },
+                trailingIcon = {
+                    if (selected == null) Icon(Icons.Default.Check, contentDescription = null, tint = Brand)
+                },
+            )
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = { onSelected(option); expanded = false },
+                    trailingIcon = {
+                        if (option == selected) Icon(Icons.Default.Check, contentDescription = null, tint = Brand)
+                    },
+                )
+            }
+        }
+    }
 }
 
 @Composable
