@@ -49,9 +49,9 @@ class PlaylistRepository(
                             // language metadata, so their working channels always stay).
                             if (languages.isNotEmpty()) {
                                 val langUrls = fetchUrlSet(languages.map { languageUrl(it) })
-                                if (langUrls.isNotEmpty()) {
-                                    iptvChannels = iptvChannels.filter { it.url in langUrls }
-                                }
+                                val narrowed = iptvChannels.filter { it.url in langUrls }
+                                // Only narrow if it leaves a usable list; never wipe it out.
+                                if (narrowed.isNotEmpty()) iptvChannels = narrowed
                             }
                             dedupe(curated + freeTv.await() + iptvChannels)
                         }
@@ -138,11 +138,12 @@ class PlaylistRepository(
         }
     }
 
+    // Served from GitHub's raw host (more reliable on some ISPs than github.io).
     private fun countryUrl(code: String) =
-        "https://iptv-org.github.io/iptv/countries/${code.trim().lowercase()}.m3u"
+        "https://raw.githubusercontent.com/iptv-org/iptv/gh-pages/countries/${code.trim().lowercase()}.m3u"
 
     private fun languageUrl(code: String) =
-        "https://iptv-org.github.io/iptv/languages/${code.trim().lowercase()}.m3u"
+        "https://raw.githubusercontent.com/iptv-org/iptv/gh-pages/languages/${code.trim().lowercase()}.m3u"
 
     companion object {
         private const val FREE_TV_MAIN =
