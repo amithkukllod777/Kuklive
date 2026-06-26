@@ -1,0 +1,50 @@
+name: Build webOS IPK
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install ares-cli
+        run: npm install -g @webosose/ares-cli
+
+      - name: Package IPK
+        run: |
+          mkdir -p out
+          ares-package webos -o out
+          ls -la out
+
+      - name: Upload IPK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuklive-webos-ipk
+          path: out/*.ipk
+          if-no-files-found: error
+
+      - name: Publish IPK to "webos-latest" release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/kuklive-repo-wmeocn'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: webos-latest
+          name: Kuklive webOS — latest build
+          body: |
+            Installable LG webOS package (.ipk) for Kuklive.
+            Install via Developer Mode + the webOS Device Manager / ares-cli:
+              ares-install com.kuklive.app_1.0.0_all.ipk -d <your-tv>
+          prerelease: true
+          files: out/*.ipk
