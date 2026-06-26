@@ -2,8 +2,6 @@ package com.kuklive.app.data
 
 import com.kuklive.app.data.model.Channel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -18,27 +16,23 @@ class PlaylistRepository(
     private val client: OkHttpClient = defaultClient(),
 ) {
 
+    /** Fetches and parses the main playlist. Returns quickly so channels show fast. */
     suspend fun loadChannels(playlistUrl: String): Result<List<Channel>> = withContext(Dispatchers.IO) {
         runCatching {
-            coroutineScope {
-                // Kick off the optional language index in parallel with the main fetch.
-                val languageJob = languageIndexUrl(playlistUrl)?.let { url ->
-                    async { runCatching { M3UParser.parseGroupTitlesByUrl(fetch(url)) }.getOrNull() }
-                }
-
-                val channels = M3UParser.parse(fetch(playlistUrl))
-                val languagesByUrl = languageJob?.await()
-
-                if (languagesByUrl.isNullOrEmpty()) {
-                    channels
-                } else {
-                    channels.map { channel ->
-                        val langs = languagesByUrl[channel.url]
-                        if (langs.isNullOrEmpty()) channel else channel.copy(languages = langs)
-                    }
-                }
-            }
+            val channels = M3UParser.parse(fetch(playlistUrl))
+            if (channels.isEmpty()) error("No channels found")
+            channels
         }
+    }
+
+    /**
+     * Best-effort language enrichment: downloads the (large) iptv-org language
+     * index separately so it never blocks the initial channel list. Returns a
+     * map of stream URL -> languages, or null when unavailable.
+     */
+    suspend fun loadLanguageMap(playlistUrl: String): Map<String, List<String>>? = withContext(Dispatchers.IO) {
+        val langUrl = languageIndexUrl(playlistUrl) ?: return@withContext null
+        runCatching { M3UParser.parseGroupTitlesByUrl(fetch(langUrl)) }.getOrNull()
     }
 
     private fun fetch(url: String): String {

@@ -87,10 +87,25 @@ class MainViewModel(
             repository.loadChannels(url)
                 .onSuccess { list ->
                     _state.update { it.copy(isLoading = false, channels = list, error = null) }
+                    enrichLanguages(url)
                 }
                 .onFailure { e ->
                     _state.update { it.copy(isLoading = false, error = e.message ?: "Failed to load") }
                 }
+        }
+    }
+
+    /** Fills in language metadata after channels are already shown. */
+    private fun enrichLanguages(url: String) {
+        viewModelScope.launch {
+            val map = repository.loadLanguageMap(url) ?: return@launch
+            if (map.isEmpty()) return@launch
+            _state.update { st ->
+                st.copy(channels = st.channels.map { ch ->
+                    val langs = map[ch.url]
+                    if (langs.isNullOrEmpty()) ch else ch.copy(languages = langs)
+                })
+            }
         }
     }
 
