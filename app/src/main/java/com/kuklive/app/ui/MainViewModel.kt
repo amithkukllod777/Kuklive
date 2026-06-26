@@ -21,6 +21,7 @@ data class UiState(
     val setupNeeded: Boolean = false,
     val countryCodes: Set<String> = emptySet(),
     val languageCodes: Set<String> = emptySet(),
+    val customUrl: String = "",
     val isLoading: Boolean = true,
     val error: String? = null,
     val channels: List<Channel> = emptyList(),
@@ -67,6 +68,7 @@ class MainViewModel(
     private data class Persisted(
         val countries: Set<String>,
         val languages: Set<String>,
+        val customUrl: String,
         val setupDone: Boolean,
         val favorites: Set<String>,
     )
@@ -76,10 +78,11 @@ class MainViewModel(
             combine(
                 settings.countryCodes,
                 settings.languageCodes,
+                settings.customUrl,
                 settings.setupDone,
                 settings.favoriteUrls,
-            ) { countries, languages, setupDone, favs ->
-                Persisted(countries, languages, setupDone, favs)
+            ) { countries, languages, customUrl, setupDone, favs ->
+                Persisted(countries, languages, customUrl, setupDone, favs)
             }.collect { p ->
                 val firstEmission = !_state.value.settingsLoaded
                 _state.update {
@@ -88,6 +91,7 @@ class MainViewModel(
                         setupNeeded = !p.setupDone,
                         countryCodes = p.countries,
                         languageCodes = p.languages,
+                        customUrl = p.customUrl,
                         favoriteUrls = p.favorites,
                     )
                 }
@@ -96,22 +100,23 @@ class MainViewModel(
         }
     }
 
-    /** Saves the country/language choice and loads the matching channels. */
-    fun applySetup(countries: Set<String>, languages: Set<String>) {
+    /** Saves the country/language/custom choice and loads the matching channels. */
+    fun applySetup(countries: Set<String>, languages: Set<String>, customUrl: String = "") {
         viewModelScope.launch {
-            settings.saveSetup(countries, languages)
+            settings.saveSetup(countries, languages, customUrl)
             _state.update { it.copy(setupNeeded = false, selectedCategory = null) }
-            reload(countries, languages)
+            reload(countries, languages, customUrl)
         }
     }
 
     fun reload(
         countries: Set<String> = _state.value.countryCodes,
         languages: Set<String> = _state.value.languageCodes,
+        customUrl: String = _state.value.customUrl,
     ) {
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            repository.loadChannels(countries, languages)
+            repository.loadChannels(countries, languages, customUrl)
                 .onSuccess { list ->
                     _state.update { it.copy(isLoading = false, channels = list, error = null) }
                 }

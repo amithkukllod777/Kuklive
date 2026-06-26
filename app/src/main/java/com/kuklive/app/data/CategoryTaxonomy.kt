@@ -66,11 +66,21 @@ object CategoryTaxonomy {
         "legislative" to POLITICS,
     )
 
-    /** Maps a raw category to a curated genre, or null for adult/empty. */
+    // Some playlists use the country name as group-title (e.g. Free-TV). Don't
+    // turn those into genre chips.
+    private val countryNames: Set<String> by lazy {
+        Catalog.countries.map { it.name.lowercase() }.toSet() +
+            setOf("uk", "usa", "uae", "u.s.a.", "u.k.")
+    }
+
+    /** Maps a raw category to a curated genre, or null for adult/country/empty. */
     fun genreFor(raw: String): String? {
         val key = raw.trim().lowercase()
         if (key.isEmpty() || key == "xxx" || key == "adult") return null
-        return map[key] ?: raw.trim().replaceFirstChar { it.uppercase() }
+        map[key]?.let { return it }
+        // Drop country names and VOD buckets so chips stay genre-only.
+        if (key in countryNames || key.startsWith("vod")) return null
+        return raw.trim().replaceFirstChar { it.uppercase() }
     }
 
     /** Sort key: known genres in curated order, unknown ones after (alphabetical). */

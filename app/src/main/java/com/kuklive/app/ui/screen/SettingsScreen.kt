@@ -17,6 +17,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -41,6 +42,7 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var countries by remember(state.countryCodes) { mutableStateOf(state.countryCodes) }
     var languages by remember(state.languageCodes) { mutableStateOf(state.languageCodes) }
+    var customUrl by remember(state.customUrl) { mutableStateOf(state.customUrl) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -89,7 +91,7 @@ fun SettingsScreen(
 
             Button(
                 onClick = {
-                    viewModel.applySetup(countries, languages)
+                    viewModel.applySetup(countries, languages, customUrl)
                     onBack()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Brand),
@@ -97,6 +99,21 @@ fun SettingsScreen(
             ) {
                 Text("Save & Reload")
             }
+
+            Spacer(Modifier.height(16.dp))
+            Text("Custom playlist (optional)", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Have your own working M3U/M3U8 URL? Paste it here to use it instead of the built-in sources. Clear it to go back.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            )
+            OutlinedTextField(
+                value = customUrl,
+                onValueChange = { customUrl = it },
+                singleLine = true,
+                placeholder = { Text("https://example.com/playlist.m3u") },
+                modifier = Modifier.fillMaxWidth(),
+            )
 
             Spacer(Modifier.height(8.dp))
             Text(
