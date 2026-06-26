@@ -51,6 +51,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.kuklive.app.ui.MainViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -71,6 +72,7 @@ fun PlayerScreen(
     var index by remember { mutableIntStateOf(viewModel.playingIndex.coerceIn(0, channels.lastIndex)) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isBuffering by remember { mutableStateOf(true) }
+    var hasStarted by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
         // Most IPTV streams redirect between http/https and require a
@@ -89,6 +91,7 @@ fun PlayerScreen(
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(state: Int) {
                         isBuffering = state == Player.STATE_BUFFERING
+                        if (state == Player.STATE_READY) hasStarted = true
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
@@ -103,6 +106,7 @@ fun PlayerScreen(
     LaunchedEffect(index) {
         errorMessage = null
         isBuffering = true
+        hasStarted = false
         val channel = channels[index]
         viewModel.updatePlayingIndex(index)
         val mediaItem = MediaItem.Builder()
@@ -116,6 +120,13 @@ fun PlayerScreen(
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
         exoPlayer.play()
+
+        // If nothing plays within 25s, surface an error instead of spinning forever.
+        delay(25_000)
+        if (!hasStarted && errorMessage == null) {
+            isBuffering = false
+            errorMessage = "Stream not responding — it may be offline or geo-blocked.\nTry the next channel ▶"
+        }
     }
 
     // Keep the screen awake the whole time a channel is open, then release
