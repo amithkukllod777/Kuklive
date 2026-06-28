@@ -1,0 +1,15 @@
+{
+  "id": "com.kuklive.app",
+  "version": "1.0.0",
+  "vendor": "Kuklive",
+  "type": "web",
+  "main": "index.html",
+  "title": "Kuklive",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "bgColor": "#0A0A0F",
+  "iconColor": "#7C5CFF",
+  "disableBackHistoryAPI": true,
+  "handlesRelaunch": false,
+  "supportPortraitMode": false
+}

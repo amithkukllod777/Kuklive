@@ -1,6 +1,10 @@
 package com.kuklive.app.ui.screen
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,14 +38,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.kuklive.app.ui.MainViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -61,30 +71,73 @@ fun PlayerScreen(
 
     var index by remember { mutableIntStateOf(viewModel.playingIndex.coerceIn(0, channels.lastIndex)) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isBuffering by remember { mutableStateOf(true) }
+    var hasStarted by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            playWhenReady = true
-            addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    errorMessage = "Can't play this stream (${error.errorCodeName})"
-                }
-            })
-        }
+        // Most IPTV streams redirect between http/https and require a
+        // browser-like User-Agent — ExoPlayer blocks both by default.
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Kuklive/1.0")
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(30_000)
+            .setReadTimeoutMs(30_000)
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .build().apply {
+                playWhenReady = true
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        isBuffering = state == Player.STATE_BUFFERING
+                        if (state == Player.STATE_READY) hasStarted = true
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        isBuffering = false
+                        errorMessage = "Can't play this stream (${error.errorCodeName})"
+                    }
+                })
+            }
     }
 
     // (Re)load whenever the selected channel changes.
     LaunchedEffect(index) {
         errorMessage = null
+        isBuffering = true
+        hasStarted = false
         val channel = channels[index]
         viewModel.updatePlayingIndex(index)
-        exoPlayer.setMediaItem(MediaItem.fromUri(channel.url))
+        val mediaItem = MediaItem.Builder()
+            .setUri(channel.url)
+            .apply {
+                if (channel.url.contains(".m3u8", ignoreCase = true)) {
+                    setMimeType(MimeTypes.APPLICATION_M3U8)
+                }
+            }
+            .build()
+        exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
         exoPlayer.play()
+
+        // If nothing plays within 25s, surface an error instead of spinning forever.
+        delay(25_000)
+        if (!hasStarted && errorMessage == null) {
+            isBuffering = false
+            errorMessage = "Stream not responding — it may be offline or geo-blocked.\nTry the next channel ▶"
+        }
     }
 
+    // Keep the screen awake the whole time a channel is open, then release
+    // the player and clear the flag when leaving the player screen.
     DisposableEffect(Unit) {
-        onDispose { exoPlayer.release() }
+        val window = context.findActivity()?.window
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            exoPlayer.release()
+        }
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -101,6 +154,12 @@ fun PlayerScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
+
+        if (isBuffering && errorMessage == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Color.White)
+            }
+        }
 
         if (errorMessage != null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -170,4 +229,14 @@ fun PlayerScreen(
             }
         }
     }
+}
+
+/** Walks the ContextWrapper chain to find the hosting Activity. */
+private fun Context.findActivity(): Activity? {
+    var ctx: Context? = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -23,13 +25,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.kuklive.app.data.SettingsStore
 import com.kuklive.app.ui.MainViewModel
 import com.kuklive.app.ui.theme.Brand
 
@@ -40,7 +40,9 @@ fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var url by rememberSaveable(state.playlistUrl) { mutableStateOf(state.playlistUrl) }
+    var countries by remember(state.countryCodes) { mutableStateOf(state.countryCodes) }
+    var languages by remember(state.languageCodes) { mutableStateOf(state.languageCodes) }
+    var customUrl by remember(state.customUrl) { mutableStateOf(state.customUrl) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -62,52 +64,62 @@ fun SettingsScreen(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Playlist URL (M3U)", style = MaterialTheme.typography.titleMedium)
+            Text("Region", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Paste any IPTV M3U/M3U8 playlist URL. Channels reload when you save.",
+                "Choose which channels to load. Smaller selections load faster.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
             )
 
-            OutlinedTextField(
-                value = url,
-                onValueChange = { url = it },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("M3U URL") },
+            MultiCountryPicker(
+                selected = countries,
+                onToggle = { code -> countries = countries.toggle(code) },
+                onClear = { countries = emptySet() },
             )
+            Spacer(Modifier.height(4.dp))
+            MultiLanguagePicker(
+                selected = languages,
+                onToggle = { code -> languages = languages.toggle(code) },
+                onClear = { languages = emptySet() },
+            )
+
+            Spacer(Modifier.height(8.dp))
 
             Button(
                 onClick = {
-                    viewModel.setPlaylistUrl(url.trim())
+                    viewModel.applySetup(countries, languages, customUrl)
                     onBack()
                 },
-                enabled = url.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = Brand),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
             ) {
                 Text("Save & Reload")
             }
 
-            Button(
-                onClick = { url = SettingsStore.DEFAULT_PLAYLIST_URL },
-                colors = ButtonDefaults.outlinedButtonColors(),
+            Spacer(Modifier.height(16.dp))
+            Text("Custom playlist (optional)", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Have your own working M3U/M3U8 URL? Paste it here to use it instead of the built-in sources. Clear it to go back.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            )
+            OutlinedTextField(
+                value = customUrl,
+                onValueChange = { customUrl = it },
+                singleLine = true,
+                placeholder = { Text("https://example.com/playlist.m3u") },
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Reset to default playlist")
-            }
+            )
 
             Spacer(Modifier.height(8.dp))
-
             Text(
                 "Loaded channels: ${state.channels.size}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 "Kuklive v1.0",
