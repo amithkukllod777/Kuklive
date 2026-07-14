@@ -2,8 +2,29 @@
 (function () {
   "use strict";
 
-  var DEFAULT_PLAYLIST = "https://iptv-org.github.io/iptv/index.m3u";
+  // Served from GitHub's raw host (reliable where github.io is blocked).
+  var DEFAULT_PLAYLIST = "https://raw.githubusercontent.com/iptv-org/iptv/gh-pages/countries/in.m3u";
   var MAX_RENDER = 300; // keep the TV responsive with huge playlists
+
+  // Verified free-to-air streams, shown first (mirrors the Android curated list).
+  var CURATED = [
+    "#EXTM3U",
+    '#EXTINF:-1 tvg-country="IN" group-title="News",Aaj Tak',
+    "https://feeds.intoday.in/aajtak/api/aajtakhd/master.m3u8",
+    '#EXTINF:-1 tvg-country="IN" group-title="News",India Today',
+    "https://indiatodaylive.akamaized.net/hls/live/2014320/indiatoday/indiatodaylive/playlist.m3u8",
+    '#EXTINF:-1 tvg-country="IN" group-title="News",NDTV India',
+    "https://ndtvindiaelemarchana.akamaized.net/hls/live/2003679/ndtvindia/master.m3u8",
+    '#EXTINF:-1 tvg-country="IN" group-title="News",ABP News',
+    "https://abplivetv.pc.cdn.bitgravity.com/httppush/abp_livetv/abp_abpnews/master.m3u8",
+    '#EXTINF:-1 tvg-country="IN" group-title="News",ABP Ananda',
+    "https://abplivetv.pc.cdn.bitgravity.com/httppush/abp_livetv/abp_ananda/master.m3u8",
+  ].join("\n");
+
+  function isPlayable(url) {
+    var u = url.toLowerCase();
+    return u.indexOf("youtube.com") === -1 && u.indexOf("youtu.be") === -1;
+  }
 
   // ----- DOM -----
   var grid = document.getElementById("grid");
@@ -167,11 +188,18 @@
     showState('<div class="spinner"></div><div>Loading channels…</div>');
     fetchText(url)
       .then(function (text) {
-        channels = parse(text);
+        // Curated verified channels first, then the country playlist; drop
+        // YouTube links (not playable) and de-duplicate by URL.
+        var all = parse(CURATED).concat(parse(text));
+        var seen = {};
+        channels = all.filter(function (ch) {
+          if (!isPlayable(ch.url) || seen[ch.url]) return false;
+          seen[ch.url] = 1;
+          return true;
+        });
         if (!channels.length) throw new Error("No channels found");
         populateFilters();
         render();
-        enrichLanguages(url);
       })
       .catch(function (err) {
         showState(

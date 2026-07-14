@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -73,6 +74,10 @@ fun PlayerScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isBuffering by remember { mutableStateOf(true) }
     var hasStarted by remember { mutableStateOf(false) }
+    // Auto-skip dead streams so the user lands on a working channel hands-free.
+    var consecutiveFails by remember { mutableIntStateOf(0) }
+    val maxAutoSkip = 15
+    val canAutoSkip = errorMessage != null && index < channels.lastIndex && consecutiveFails <= maxAutoSkip
 
     val exoPlayer = remember {
         // Most IPTV streams redirect between http/https and require a
@@ -91,12 +96,16 @@ fun PlayerScreen(
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(state: Int) {
                         isBuffering = state == Player.STATE_BUFFERING
-                        if (state == Player.STATE_READY) hasStarted = true
+                        if (state == Player.STATE_READY) {
+                            hasStarted = true
+                            consecutiveFails = 0
+                        }
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
                         isBuffering = false
-                        errorMessage = "Can't play this stream (${error.errorCodeName})"
+                        consecutiveFails++
+                        errorMessage = "Stream unavailable (${error.errorCodeName})"
                     }
                 })
             }
@@ -121,11 +130,21 @@ fun PlayerScreen(
         exoPlayer.prepare()
         exoPlayer.play()
 
-        // If nothing plays within 25s, surface an error instead of spinning forever.
-        delay(25_000)
+        // If nothing plays within 15s, treat it as unavailable instead of spinning forever.
+        delay(15_000)
         if (!hasStarted && errorMessage == null) {
             isBuffering = false
-            errorMessage = "Stream not responding — it may be offline or geo-blocked.\nTry the next channel ▶"
+            consecutiveFails++
+            errorMessage = "Stream not responding — it may be offline or geo-blocked."
+        }
+    }
+
+    // Auto-advance to the next channel a few seconds after a failure, until one
+    // plays or too many in a row fail (then we stop and let the user decide).
+    LaunchedEffect(errorMessage, index) {
+        if (canAutoSkip) {
+            delay(4_000)
+            if (errorMessage != null) index++
         }
     }
 
@@ -163,7 +182,22 @@ fun PlayerScreen(
 
         if (errorMessage != null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(errorMessage!!, color = Color.White)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(32.dp),
+                ) {
+                    Text(errorMessage!!, color = Color.White, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = if (canAutoSkip) {
+                            "Trying next channel…"
+                        } else {
+                            "Many channels here are offline. Try another category, or add your own playlist in Settings."
+                        },
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
 

@@ -56,7 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.kuklive.app.data.Catalog
 import com.kuklive.app.data.model.Channel
 import com.kuklive.app.ui.MainViewModel
@@ -112,6 +112,7 @@ fun ChannelsScreen(
             RegionBar(
                 countries = state.countryCodes,
                 languages = state.languageCodes,
+                customUrl = state.customUrl,
                 onClick = onOpenSettings,
             )
 
@@ -152,8 +153,12 @@ fun ChannelsScreen(
 }
 
 @Composable
-private fun RegionBar(countries: Set<String>, languages: Set<String>, onClick: () -> Unit) {
-    val label = "${Catalog.countrySummary(countries)}   ·   ${Catalog.languageSummary(languages)}"
+private fun RegionBar(countries: Set<String>, languages: Set<String>, customUrl: String, onClick: () -> Unit) {
+    val label = if (customUrl.isNotBlank()) {
+        "Custom playlist"
+    } else {
+        "${Catalog.countrySummary(countries)}   ·   ${Catalog.languageSummary(languages)}"
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -251,10 +256,14 @@ private fun ChannelCard(
                 .background(Color(0xFF1F1F2B)),
         ) {
             if (channel.logoUrl != null) {
-                AsyncImage(
+                SubcomposeAsyncImage(
                     model = channel.logoUrl,
                     contentDescription = channel.name,
                     modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)),
+                    // Broken/404 logos fall back to the app icon instead of the
+                    // provider's "image not found" graphic.
+                    error = { Icon(Icons.Default.LiveTv, contentDescription = null, tint = Brand) },
+                    loading = { Icon(Icons.Default.LiveTv, contentDescription = null, tint = Brand) },
                 )
             } else {
                 Icon(Icons.Default.LiveTv, contentDescription = null, tint = Brand)
